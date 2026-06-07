@@ -1,0 +1,11 @@
+*.qmlc
+*.jsc
+.qmlls.ini
+.DS_Store
+.idea/
+.vscode/
+
+# never commit a local API-token file if one is dropped in the repo dir
+token
+*.token
+*.secret

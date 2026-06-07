@@ -1,0 +1,18 @@
+{
+  "id": "wienerLinien",
+  "name": "Wiener Linien",
+  "description": "Track departure times of Wiener Linien public transit",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": "Lukas Wolfsberger",
+  "icon": "directions_transit",
+  "type": "widget",
+  "capabilities": ["dankbar-widget"],
+  "component": "./PublicTransit.qml",
+  "settings": "./PublicTransitSettings.qml",
+  "permissions": [
+    "network",
+    "settings_read",
+    "settings_write"
+  ]
+}
