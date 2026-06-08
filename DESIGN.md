@@ -50,7 +50,7 @@ Recommended workflow:
 
 ## Wiener Linien Realtime API
 
-**Base URL:** `http://www.wienerlinien.at/ogd_realtime/`
+**Base URL:** `https://www.wienerlinien.at/ogd_realtime/`
 
 **Endpoint used:** `monitor?stopId=<id>&stopId=<id>...`
 

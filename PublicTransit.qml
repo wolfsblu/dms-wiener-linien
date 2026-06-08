@@ -15,12 +15,11 @@ PluginComponent {
     }
     readonly property int pollMs: Math.max(30000, parseInt(pluginData.pollInterval || "60") * 1000)
 
-    // ---- Runtime state ----
-    property var departuresByStation: []
-    property string lastError: ""
-
-    // ---- API client ----
-    WienerLinienClient { id: client }
+    // Push settings into the singleton whenever they change.
+    // All screen instances share the same pluginData so the values are always identical.
+    Component.onCompleted: WienerLinienService.configure(trackedStops, pollMs)
+    onTrackedStopsChanged: WienerLinienService.configure(trackedStops, pollMs)
+    onPollMsChanged: WienerLinienService.configure(trackedStops, pollMs)
 
     // ---- Helpers ----
 
@@ -38,152 +37,6 @@ PluginComponent {
         if (type === "ptTram")     return "#cd1518"
         if (type === "ptBusNight") return "#22375b"
         return "#1d5a96"
-    }
-
-    function _collectStopIds() {
-        const ids = []
-        for (let i = 0; i < root.trackedStops.length; i++) {
-            const sids = root.trackedStops[i].stopIds || []
-            for (let j = 0; j < sids.length; j++) ids.push(sids[j])
-        }
-        return ids
-    }
-
-    function _buildRblIndex() {
-        const m = {}
-        for (let i = 0; i < root.trackedStops.length; i++) {
-            const sids = root.trackedStops[i].stopIds || []
-            for (let j = 0; j < sids.length; j++) m[sids[j]] = i
-        }
-        return m
-    }
-
-    function _parseMonitors(monitors) {
-        const rblIdx = root._buildRblIndex()
-        const result = root.trackedStops.map(function (s) {
-            return { stationName: s.name, lines: [] }
-        })
-
-        for (let m = 0; m < monitors.length; m++) {
-            const mon = monitors[m]
-            const props = mon.locationStop && mon.locationStop.properties
-            const rbl = props && props.attributes && props.attributes.rbl
-            const idx = rblIdx[rbl]
-            if (idx === undefined || idx === null) continue
-
-            const lines = mon.lines || []
-            for (let l = 0; l < lines.length; l++) {
-                const line = lines[l]
-                const deps = (line.departures && line.departures.departure) || []
-                if (deps.length === 0) continue
-                const cd0 = deps[0].departureTime && deps[0].departureTime.countdown
-                if (cd0 === undefined || cd0 === null) continue
-
-                // Deduplicate by line name + towards; keep lowest countdown
-                let dup = null
-                for (let k = 0; k < result[idx].lines.length; k++) {
-                    if (result[idx].lines[k].name === line.name
-                            && result[idx].lines[k].towards === line.towards) {
-                        dup = result[idx].lines[k]
-                        break
-                    }
-                }
-                if (dup) {
-                    if (cd0 < dup.departures[0].countdown)
-                        dup.departures[0].countdown = cd0
-                    continue
-                }
-
-                result[idx].lines.push({
-                    name:        line.name || "",
-                    towards:     line.towards || "",
-                    type:        line.type || "ptBus",
-                    barrierFree: line.barrierFree === true,
-                    departures:  deps.slice(0, 3).map(function (d) {
-                        return {
-                            countdown:   (d.departureTime && d.departureTime.countdown) || 0,
-                            timeReal:    (d.departureTime && d.departureTime.timeReal) || "",
-                            timePlanned: (d.departureTime && d.departureTime.timePlanned) || ""
-                        }
-                    })
-                })
-            }
-        }
-
-        // Sort each station's lines: metro → tram → bus → night bus; then by countdown
-        const typeOrder = { ptMetro: 0, ptTram: 1, ptBus: 2, ptBusNight: 3 }
-        for (let i = 0; i < result.length; i++) {
-            result[i].lines.sort(function (a, b) {
-                const ta = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 9
-                const tb = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 9
-                if (ta !== tb) return ta - tb
-                return a.departures[0].countdown - b.departures[0].countdown
-            })
-        }
-        return result
-    }
-
-    property bool _rateLimited: false
-    property real _lastFetchMs: 0
-    readonly property int _minIntervalMs: 15000
-
-    function refresh() {
-        if (root._rateLimited) return
-        const now = Date.now()
-        if (now - root._lastFetchMs < root._minIntervalMs) return
-        const ids = root._collectStopIds()
-        if (ids.length === 0) {
-            root.departuresByStation = []
-            root.lastError = ""
-            return
-        }
-        root._lastFetchMs = now
-        client.fetchMonitor(ids, function (err, monitors) {
-            if (err) {
-                const msg = (err && err.message) ? err.message : String(err)
-                console.warn("[transit] poll failed:", msg)
-                const isRateLimited = (err.httpStatus === 429) || (err.apiCode === 316)
-                if (isRateLimited) {
-                    root._rateLimited = true
-                    root.lastError = "Rate limited — retrying in 5 min"
-                    rateLimitBackoff.restart()
-                } else {
-                    root.lastError = msg
-                }
-                return
-            }
-            root.lastError = ""
-            root._rateLimited = false
-            root.departuresByStation = root._parseMonitors(monitors)
-        })
-    }
-
-    Component.onCompleted: refresh()
-    onTrackedStopsChanged: settingsDebounce.restart()
-
-    Timer {
-        interval: root.pollMs
-        repeat: true
-        running: true
-        onTriggered: root.refresh()
-    }
-
-    Timer {
-        id: settingsDebounce
-        interval: 600
-        repeat: false
-        onTriggered: root.refresh()
-    }
-
-    // Wait 5 minutes after a 429 before trying again
-    Timer {
-        id: rateLimitBackoff
-        interval: 300000
-        repeat: false
-        onTriggered: {
-            root._rateLimited = false
-            root.refresh()
-        }
     }
 
     // ---- Inline components ----
@@ -234,7 +87,7 @@ PluginComponent {
             }
 
             Repeater {
-                model: root.departuresByStation
+                model: WienerLinienService.departuresByStation
                 delegate: Row {
                     id: stationChips
                     required property var modelData
@@ -345,7 +198,7 @@ PluginComponent {
 
                         // Error banner
                         Rectangle {
-                            visible: root.lastError.length > 0
+                            visible: WienerLinienService.lastError.length > 0
                             width: boardCol.width
                             height: errText.implicitHeight + Theme.spacingS * 2
                             radius: Theme.cornerRadius
@@ -360,7 +213,7 @@ PluginComponent {
                                 anchors.verticalCenter: parent.verticalCenter
                                 anchors.leftMargin: Theme.spacingS
                                 anchors.rightMargin: Theme.spacingS
-                                text: root.lastError
+                                text: WienerLinienService.lastError
                                 color: Theme.error
                                 font.pixelSize: Theme.fontSizeSmall
                                 wrapMode: Text.WordWrap
@@ -380,7 +233,7 @@ PluginComponent {
 
                         // One section per tracked station
                         Repeater {
-                            model: root.departuresByStation
+                            model: WienerLinienService.departuresByStation
                             delegate: Column {
                                 required property var modelData
                                 width: boardCol.width

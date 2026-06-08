@@ -1,0 +1,2 @@
+WienerLinienClient 1.0 WienerLinienClient.qml
+singleton WienerLinienService 1.0 WienerLinienService.qml
