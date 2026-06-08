@@ -3,6 +3,8 @@
 A [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) plugin that shows real-time
 Wiener Linien departure times on the DankBar.
 
+![Popup screenshot](screenshot.png "Screenshot")
+
 ## Features
 
 - Bar pill showing the next 1–2 departures per tracked stop as coloured line
