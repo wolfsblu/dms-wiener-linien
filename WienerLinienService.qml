@@ -11,6 +11,9 @@ Item {
     // ---- Output — read by all PluginComponent instances ----
     property var departuresByStation: []
     property string lastError: ""
+    // Unfiltered map of all towards values seen per station+line — persists across fetches
+    // { stationName: { lineName: [towards, ...] } }
+    property var knownDirections: {}
 
     // ---- Internal ----
     property bool _rateLimited: false
@@ -53,6 +56,27 @@ Item {
             return { stationName: s.name, lines: [] }
         })
 
+        // Accumulate all known directions before any filtering
+        const known = Object.assign({}, root.knownDirections)
+        for (let m = 0; m < monitors.length; m++) {
+            const mon = monitors[m]
+            const props = mon.locationStop && mon.locationStop.properties
+            const rbl = props && props.attributes && props.attributes.rbl
+            const idx = rblIdx[rbl]
+            if (idx === undefined || idx === null) continue
+            const stName = root.trackedStops[idx].name
+            if (!known[stName]) known[stName] = {}
+            const rawLines = mon.lines || []
+            for (let l = 0; l < rawLines.length; l++) {
+                const rl = rawLines[l]
+                if (!rl.name || !rl.towards) continue
+                if (!known[stName][rl.name]) known[stName][rl.name] = []
+                if (known[stName][rl.name].indexOf(rl.towards) === -1)
+                    known[stName][rl.name].push(rl.towards)
+            }
+        }
+        root.knownDirections = known
+
         for (let m = 0; m < monitors.length; m++) {
             const mon = monitors[m]
             const props = mon.locationStop && mon.locationStop.properties
@@ -71,8 +95,8 @@ Item {
                 const lineFilter = root.trackedStops[idx].lines || []
                 if (lineFilter.length > 0 && lineFilter.indexOf(line.name) === -1) continue
 
-                const directions = root.trackedStops[idx].directions || {}
-                if (directions[line.name] !== undefined && directions[line.name] !== line.towards) continue
+                const excl = (root.trackedStops[idx].directions || {})[line.name]
+                if (excl && excl.indexOf(line.towards) !== -1) continue
 
                 let dup = null
                 for (let k = 0; k < result[idx].lines.length; k++) {

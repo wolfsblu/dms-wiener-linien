@@ -125,22 +125,34 @@ PluginSettings {
             picker.save()
         }
 
-        // towards === null clears the direction filter for that line
-        function setDirection(stationName, lineName, towards) {
+        // Toggle a direction in/out of the exclusion list for a line.
+        // availDirs is the full set of known directions for this line.
+        function toggleDirection(stationName, lineName, towards, availDirs) {
             let next = picker.selectedStations.slice()
             for (let i = 0; i < next.length; i++) {
                 if (next[i].name !== stationName) continue
                 const dirs = Object.assign({}, next[i].directions || {})
-                if (towards === null)
-                    delete dirs[lineName]
-                else
-                    dirs[lineName] = towards
+                let excl = (dirs[lineName] || []).slice()
+                const pos = excl.indexOf(towards)
+                if (pos !== -1) excl.splice(pos, 1)   // was excluded → re-include
+                else excl.push(towards)               // was included → exclude
+                if (excl.length === 0) delete dirs[lineName]
+                else dirs[lineName] = excl
                 next[i] = { name: next[i].name, stopIds: next[i].stopIds,
                             lines: next[i].lines, directions: dirs }
                 break
             }
             picker.selectedStations = next
             picker.save()
+        }
+
+        // Returns true if a direction is currently included (not excluded) for a line
+        function isDirActive(stationName, lineName, towards) {
+            const e = picker.trackedEntry(stationName)
+            if (!e) return true
+            const excl = (e.directions || {})[lineName]
+            if (!excl) return true
+            return excl.indexOf(towards) === -1
         }
 
         function removeStation(name) {
@@ -157,19 +169,10 @@ PluginSettings {
             return []
         }
 
-        // Returns all unique 'towards' values for a given line at a station from live data
+        // Returns all known towards values for a line at a station (persists across fetches)
         function availableDirections(stationName, lineName) {
-            const data = WienerLinienService.departuresByStation
-            for (let i = 0; i < data.length; i++) {
-                if (data[i].stationName !== stationName) continue
-                const dirs = []
-                for (let j = 0; j < data[i].lines.length; j++) {
-                    if (data[i].lines[j].name === lineName)
-                        dirs.push(data[i].lines[j].towards)
-                }
-                return dirs
-            }
-            return []
+            const known = WienerLinienService.knownDirections
+            return (known[stationName] && known[stationName][lineName]) || []
         }
 
         Component.onCompleted: {
@@ -296,156 +299,83 @@ PluginSettings {
                             anchors.margins: Theme.spacingM
                             spacing: Theme.spacingS
 
-                            // Line toggles
-                            Flow {
-                                width: parent.width
-                                spacing: 6
+                            // One row per available line: [badge toggle]  [dir chip] [dir chip] …
+                            Repeater {
+                                model: picker.allLinesFor(_trackedItem.station.name)
+                                delegate: Flow {
+                                    id: _lineRow
+                                    required property string modelData
+                                    readonly property string lineName: modelData
+                                    readonly property bool tracked:
+                                        picker.isLineTracked(_trackedItem.station.name, lineName)
+                                    readonly property var availDirs:
+                                        picker.availableDirections(_trackedItem.station.name, lineName)
 
-                                Repeater {
-                                    model: picker.allLinesFor(_trackedItem.station.name)
-                                    delegate: Rectangle {
-                                        required property string modelData
-                                        readonly property string lineName: modelData
-                                        readonly property bool tracked:
-                                            picker.isLineTracked(_trackedItem.station.name, lineName)
+                                    width: _editCol.width
+                                    spacing: 6
 
-                                        color: tracked ? root.lineColor(lineName)
-                                                       : Qt.rgba(0.5, 0.5, 0.5, 0.15)
+                                    // Line badge — acts as the toggle
+                                    Rectangle {
+                                        color: _lineRow.tracked ? root.lineColor(_lineRow.lineName)
+                                                                : Qt.rgba(0.5, 0.5, 0.5, 0.15)
                                         radius: 4
-                                        implicitWidth: _et.implicitWidth + 12
-                                        implicitHeight: _et.implicitHeight + 8
-                                        border.color: tracked ? "transparent"
-                                                              : Qt.rgba(0.5, 0.5, 0.5, 0.3)
+                                        implicitWidth: _lt.implicitWidth + 12
+                                        implicitHeight: _lt.implicitHeight + 8
+                                        border.color: _lineRow.tracked ? "transparent"
+                                                                       : Qt.rgba(0.5, 0.5, 0.5, 0.3)
                                         border.width: 1
-
                                         StyledText {
-                                            id: _et
+                                            id: _lt
                                             anchors.centerIn: parent
-                                            text: parent.lineName
-                                            color: parent.tracked ? "white" : Theme.surfaceVariantText
+                                            text: _lineRow.lineName
+                                            color: _lineRow.tracked ? "white" : Theme.surfaceVariantText
                                             font.pixelSize: Theme.fontSizeSmall
                                             font.weight: Font.Bold
                                         }
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                const stObj = { name: _trackedItem.station.name,
-                                                                stopIds: _trackedItem.station.stopIds }
-                                                picker.toggleLine(stObj, parent.lineName)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Direction picker for each tracked line
-                            Repeater {
-                                model: _trackedItem.station.lines
-                                delegate: Column {
-                                    id: _dirSection
-                                    required property string modelData
-                                    readonly property string lineName: modelData
-                                    readonly property var availDirs:
-                                        picker.availableDirections(_trackedItem.station.name, lineName)
-                                    readonly property string currentDir:
-                                        (_trackedItem.station.directions || {})[lineName] || ""
-
-                                    width: _editCol.width
-                                    spacing: 4
-                                    visible: availDirs.length > 0
-
-                                    Row {
-                                        spacing: 6
-
-                                        Rectangle {
-                                            color: root.lineColor(_dirSection.lineName)
-                                            radius: 3
-                                            implicitWidth: _dl.implicitWidth + 8
-                                            implicitHeight: _dl.implicitHeight + 4
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            StyledText {
-                                                id: _dl
-                                                anchors.centerIn: parent
-                                                text: _dirSection.lineName
-                                                color: "white"
-                                                font.pixelSize: Theme.fontSizeSmall - 1
-                                                font.weight: Font.Bold
-                                            }
-                                        }
-
-                                        StyledText {
-                                            text: "direction:"
-                                            color: Theme.surfaceVariantText
-                                            font.pixelSize: Theme.fontSizeSmall - 1
-                                            anchors.verticalCenter: parent.verticalCenter
+                                            onClicked: picker.toggleLine(
+                                                { name: _trackedItem.station.name,
+                                                  stopIds: _trackedItem.station.stopIds },
+                                                _lineRow.lineName)
                                         }
                                     }
 
-                                    Flow {
-                                        width: _dirSection.width
-                                        spacing: 6
+                                    // Direction chips — only shown when line is tracked
+                                    Repeater {
+                                        model: _lineRow.tracked ? _lineRow.availDirs : []
+                                        delegate: Rectangle {
+                                            required property string modelData
+                                            readonly property string towards: modelData
+                                            readonly property bool active:
+                                                picker.isDirActive(_trackedItem.station.name,
+                                                                   _lineRow.lineName, towards)
 
-                                        // "All" chip
-                                        Rectangle {
-                                            readonly property bool active: _dirSection.currentDir === ""
                                             color: active
                                                 ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.9)
                                                 : Qt.rgba(0.5, 0.5, 0.5, 0.12)
                                             radius: 4
-                                            implicitWidth: _alt.implicitWidth + 12
-                                            implicitHeight: _alt.implicitHeight + 8
+                                            implicitWidth: _dct.implicitWidth + 12
+                                            implicitHeight: _dct.implicitHeight + 8
                                             border.color: active ? "transparent"
                                                                  : Qt.rgba(0.5, 0.5, 0.5, 0.3)
                                             border.width: 1
                                             StyledText {
-                                                id: _alt
+                                                id: _dct
                                                 anchors.centerIn: parent
-                                                text: "All directions"
+                                                text: parent.towards
                                                 color: parent.active ? "white" : Theme.surfaceVariantText
                                                 font.pixelSize: Theme.fontSizeSmall - 1
                                             }
                                             MouseArea {
                                                 anchors.fill: parent
                                                 cursorShape: Qt.PointingHandCursor
-                                                onClicked: picker.setDirection(
-                                                    _trackedItem.station.name, _dirSection.lineName, null)
-                                            }
-                                        }
-
-                                        // One chip per available direction
-                                        Repeater {
-                                            model: _dirSection.availDirs
-                                            delegate: Rectangle {
-                                                required property string modelData
-                                                readonly property string towards: modelData
-                                                readonly property bool active:
-                                                    _dirSection.currentDir === towards
-
-                                                color: active
-                                                    ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.9)
-                                                    : Qt.rgba(0.5, 0.5, 0.5, 0.12)
-                                                radius: 4
-                                                implicitWidth: _dct.implicitWidth + 12
-                                                implicitHeight: _dct.implicitHeight + 8
-                                                border.color: active ? "transparent"
-                                                                     : Qt.rgba(0.5, 0.5, 0.5, 0.3)
-                                                border.width: 1
-                                                StyledText {
-                                                    id: _dct
-                                                    anchors.centerIn: parent
-                                                    text: parent.towards
-                                                    color: parent.active ? "white" : Theme.surfaceVariantText
-                                                    font.pixelSize: Theme.fontSizeSmall - 1
-                                                }
-                                                MouseArea {
-                                                    anchors.fill: parent
-                                                    cursorShape: Qt.PointingHandCursor
-                                                    onClicked: picker.setDirection(
-                                                        _trackedItem.station.name,
-                                                        _dirSection.lineName,
-                                                        parent.towards)
-                                                }
+                                                onClicked: picker.toggleDirection(
+                                                    _trackedItem.station.name,
+                                                    _lineRow.lineName,
+                                                    parent.towards,
+                                                    _lineRow.availDirs)
                                             }
                                         }
                                     }
