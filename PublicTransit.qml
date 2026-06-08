@@ -142,7 +142,8 @@ PluginComponent {
             if (err) {
                 const msg = (err && err.message) ? err.message : String(err)
                 console.warn("[transit] poll failed:", msg)
-                if (msg.indexOf("429") !== -1) {
+                const isRateLimited = (err.httpStatus === 429) || (err.apiCode === 316)
+                if (isRateLimited) {
                     root._rateLimited = true
                     root.lastError = "Rate limited — retrying in 5 min"
                     rateLimitBackoff.restart()

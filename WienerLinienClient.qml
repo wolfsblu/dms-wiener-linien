@@ -23,12 +23,19 @@ QtObject {
         const xhr = new XMLHttpRequest()
         xhr.open("GET", url)
         xhr.setRequestHeader("Accept", "application/json")
-        xhr.setRequestHeader("Content-Type", "application/json")
         xhr.onreadystatechange = function () {
             if (xhr.readyState !== XMLHttpRequest.DONE) return
             if (xhr.status >= 200 && xhr.status < 300) {
                 try {
                     const body = JSON.parse(xhr.responseText)
+                    const apiCode = (body && body.message && body.message.messageCode) || 0
+                    if (apiCode !== 0) {
+                        const err = new Error("API code " + apiCode)
+                        err.httpStatus = xhr.status
+                        err.apiCode = apiCode
+                        cb(err)
+                        return
+                    }
                     cb(null, (body && body.data && body.data.monitors) || [])
                 } catch (e) {
                     cb(e)
@@ -36,7 +43,10 @@ QtObject {
             } else {
                 let code = 0
                 try { code = JSON.parse(xhr.responseText).message.messageCode } catch (_) {}
-                cb(new Error("API error " + xhr.status + " (code " + code + ")"))
+                const err = new Error("API error " + xhr.status + " (code " + code + ")")
+                err.httpStatus = xhr.status
+                err.apiCode = code
+                cb(err)
             }
         }
         xhr.send(null)
