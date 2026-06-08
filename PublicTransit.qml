@@ -21,6 +21,18 @@ PluginComponent {
     onTrackedStopsChanged: WienerLinienService.configure(trackedStops, pollMs)
     onPollMsChanged: WienerLinienService.configure(trackedStops, pollMs)
 
+    // ---- Blink state for at-stop indicator ----
+    property bool _blinkState: false
+    Timer {
+        interval: 500
+        repeat: true
+        running: true
+        onTriggered: root._blinkState = !root._blinkState
+    }
+    function countdownText(cd, suffix) {
+        return cd === 0 ? (root._blinkState ? "* " : " *") : (cd + (suffix !== undefined ? suffix : "′"))
+    }
+
     // ---- Helpers ----
 
     function lineColor(name, type) {
@@ -110,7 +122,7 @@ PluginComponent {
                                 anchors.verticalCenter: parent.verticalCenter
                             }
                             StyledText {
-                                text: modelData.departures[0].countdown + "′"
+                                text: root.countdownText(modelData.departures[0].countdown)
                                 color: Theme.surfaceText
                                 font.pixelSize: Theme.fontSizeSmall
                                 anchors.verticalCenter: parent.verticalCenter
@@ -308,7 +320,7 @@ PluginComponent {
                                                 delegate: StyledText {
                                                     required property var modelData
                                                     required property int index
-                                                    text: (index > 0 ? "/ " : "") + modelData.countdown + " min"
+                                                    text: (index > 0 ? "/ " : "") + root.countdownText(modelData.countdown, " min")
                                                     color: index === 0
                                                         ? (modelData.countdown <= 1 ? Theme.error
                                                             : modelData.countdown <= 3 ? Theme.warning
