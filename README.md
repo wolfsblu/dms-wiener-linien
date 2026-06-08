@@ -1,6 +1,6 @@
 # dms-wiener-linien
 
-A [DankMaterialShell](https://github.com/dan-os/dms) plugin that shows real-time
+A [DankMaterialShell](https://github.com/AvengeMedia/DankMaterialShell) plugin that shows real-time
 Wiener Linien departure times on the DankBar.
 
 ## Features
