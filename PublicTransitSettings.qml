@@ -9,6 +9,21 @@ PluginSettings {
     id: root
     pluginId: "wienerLinien"
 
+    function lineColor(name) {
+        if (name && name.charAt(0) === "U") {
+            switch (name) {
+                case "U1": return "#e2001a"
+                case "U2": return "#9b2f83"
+                case "U3": return "#f47d00"
+                case "U4": return "#006f3c"
+                case "U6": return "#9b6b34"
+                default:   return "#444444"
+            }
+        }
+        if (name && name.charAt(0) >= "0" && name.charAt(0) <= "9") return "#cd1518"
+        return "#1d5a96"
+    }
+
     SelectionSetting {
         settingKey: "pollInterval"
         label: "Poll interval"
@@ -23,7 +38,7 @@ PluginSettings {
     }
 
     StyledText {
-        text: "Tracked Stations"
+        text: "Tracked Lines"
         font.pixelSize: Theme.fontSizeLarge
         font.weight: Font.Bold
         color: Theme.surfaceText
@@ -31,7 +46,7 @@ PluginSettings {
     }
 
     StyledText {
-        text: "Search for a station and click it to add. Click a tracked station to remove it."
+        text: "Search for a station, then tap line badges to select which lines to track. Tap a tracked station to edit its lines and directions."
         color: Theme.surfaceVariantText
         font.pixelSize: Theme.fontSizeSmall
         wrapMode: Text.WordWrap
@@ -45,7 +60,9 @@ PluginSettings {
 
         property var allStations: []
         property string searchText: ""
+        // [{ name, stopIds, lines: string[], directions: {lineName: towards|null} }]
         property var selectedStations: []
+        property string expandedStation: ""
 
         property var filteredStations: {
             const q = picker.searchText.toLowerCase().trim()
@@ -55,7 +72,6 @@ PluginSettings {
             }).slice(0, 12)
         }
 
-        // Called by PluginSettings automatically when pluginService is ready or data changes
         function loadValue() {
             try {
                 picker.selectedStations = JSON.parse(root.loadValue("trackedStopsJson", "[]"))
@@ -64,30 +80,96 @@ PluginSettings {
             }
         }
 
-        function isSelected(stationName) {
-            for (let i = 0; i < picker.selectedStations.length; i++) {
-                if (picker.selectedStations[i].name === stationName) return true
-            }
-            return false
+        function save() {
+            root.saveValue("trackedStopsJson", JSON.stringify(picker.selectedStations))
         }
 
-        function addStation(station) {
-            if (picker.isSelected(station.name)) return
-            const next = picker.selectedStations.concat([{
-                name: station.name,
-                stopIds: station.stopIds,
-                lines: station.lines || []
-            }])
+        function trackedEntry(stationName) {
+            for (let i = 0; i < picker.selectedStations.length; i++)
+                if (picker.selectedStations[i].name === stationName)
+                    return picker.selectedStations[i]
+            return null
+        }
+
+        function isLineTracked(stationName, lineName) {
+            const e = picker.trackedEntry(stationName)
+            return e ? e.lines.indexOf(lineName) !== -1 : false
+        }
+
+        function toggleLine(stationObj, lineName) {
+            let next = picker.selectedStations.slice()
+            let found = false
+            for (let i = 0; i < next.length; i++) {
+                if (next[i].name !== stationObj.name) continue
+                found = true
+                const lines = next[i].lines.slice()
+                const li = lines.indexOf(lineName)
+                const dirs = Object.assign({}, next[i].directions || {})
+                if (li !== -1) {
+                    lines.splice(li, 1)
+                    delete dirs[lineName]
+                } else {
+                    lines.push(lineName)
+                }
+                if (lines.length === 0)
+                    next.splice(i, 1)
+                else
+                    next[i] = { name: next[i].name, stopIds: next[i].stopIds,
+                                lines: lines, directions: dirs }
+                break
+            }
+            if (!found)
+                next.push({ name: stationObj.name, stopIds: stationObj.stopIds,
+                            lines: [lineName], directions: {} })
             picker.selectedStations = next
-            root.saveValue("trackedStopsJson", JSON.stringify(next))
+            picker.save()
+        }
+
+        // towards === null clears the direction filter for that line
+        function setDirection(stationName, lineName, towards) {
+            let next = picker.selectedStations.slice()
+            for (let i = 0; i < next.length; i++) {
+                if (next[i].name !== stationName) continue
+                const dirs = Object.assign({}, next[i].directions || {})
+                if (towards === null)
+                    delete dirs[lineName]
+                else
+                    dirs[lineName] = towards
+                next[i] = { name: next[i].name, stopIds: next[i].stopIds,
+                            lines: next[i].lines, directions: dirs }
+                break
+            }
+            picker.selectedStations = next
+            picker.save()
         }
 
         function removeStation(name) {
-            const next = picker.selectedStations.filter(function(s) {
+            picker.selectedStations = picker.selectedStations.filter(function(s) {
                 return s.name !== name
             })
-            picker.selectedStations = next
-            root.saveValue("trackedStopsJson", JSON.stringify(next))
+            picker.save()
+        }
+
+        function allLinesFor(stationName) {
+            for (let i = 0; i < picker.allStations.length; i++)
+                if (picker.allStations[i].name === stationName)
+                    return picker.allStations[i].lines || []
+            return []
+        }
+
+        // Returns all unique 'towards' values for a given line at a station from live data
+        function availableDirections(stationName, lineName) {
+            const data = WienerLinienService.departuresByStation
+            for (let i = 0; i < data.length; i++) {
+                if (data[i].stationName !== stationName) continue
+                const dirs = []
+                for (let j = 0; j < data[i].lines.length; j++) {
+                    if (data[i].lines[j].name === lineName)
+                        dirs.push(data[i].lines[j].towards)
+                }
+                return dirs
+            }
+            return []
         }
 
         Component.onCompleted: {
@@ -100,55 +182,275 @@ PluginSettings {
             width: parent.width
             spacing: Theme.spacingXS
 
-            // ---- Selected stations ----
+            // ---- Tracked stations ----
             Repeater {
                 model: picker.selectedStations
-                delegate: Rectangle {
+                delegate: Column {
+                    id: _trackedItem
                     required property var modelData
-                    width: pickerCol.width
-                    height: 40
-                    radius: Theme.cornerRadius
-                    color: Theme.surfaceContainerHigh
+                    readonly property var station: modelData
+                    readonly property bool expanded: picker.expandedStation === station.name
 
-                    StyledText {
-                        id: _selName
-                        anchors.left: parent.left
-                        anchors.leftMargin: Theme.spacingM
-                        anchors.right: _removeBtn.left
-                        anchors.rightMargin: Theme.spacingS
-                        anchors.verticalCenter: parent.verticalCenter
-                        text: modelData.name
-                        color: Theme.surfaceText
-                        font.pixelSize: Theme.fontSizeSmall
-                        font.weight: Font.Medium
-                        elide: Text.ElideRight
-                    }
+                    width: pickerCol.width
+                    spacing: 2
 
                     Rectangle {
-                        id: _removeBtn
-                        anchors.right: parent.right
-                        anchors.rightMargin: Theme.spacingS
-                        anchors.verticalCenter: parent.verticalCenter
-                        width: 28
-                        height: 28
-                        radius: 14
-                        color: _removeMouse.containsMouse
-                            ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.12)
-                            : "transparent"
-
-                        DankIcon {
-                            name: "close"
-                            size: 14
-                            color: Theme.error
-                            anchors.centerIn: parent
-                        }
+                        width: _trackedItem.width
+                        implicitHeight: Math.max(40, _nameRow.implicitHeight + Theme.spacingS * 2)
+                        radius: Theme.cornerRadius
+                        color: Theme.surfaceContainerHigh
 
                         MouseArea {
-                            id: _removeMouse
                             anchors.fill: parent
-                            hoverEnabled: true
+                            anchors.rightMargin: 40
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: picker.removeStation(modelData.name)
+                            onClicked: picker.expandedStation =
+                                _trackedItem.expanded ? "" : _trackedItem.station.name
+                        }
+
+                        Flow {
+                            id: _nameRow
+                            anchors.left: parent.left
+                            anchors.right: _removeBtn.left
+                            anchors.leftMargin: Theme.spacingM
+                            anchors.rightMargin: Theme.spacingS
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 5
+
+                            StyledText {
+                                text: _trackedItem.station.name
+                                color: Theme.surfaceText
+                                font.pixelSize: Theme.fontSizeSmall
+                                font.weight: Font.Medium
+                            }
+
+                            Repeater {
+                                model: _trackedItem.station.lines
+                                delegate: Rectangle {
+                                    required property string modelData
+                                    readonly property string lineName: modelData
+                                    readonly property var dirs: _trackedItem.station.directions || {}
+                                    readonly property string dirLabel: dirs[lineName] || ""
+
+                                    color: root.lineColor(lineName)
+                                    radius: 4
+                                    implicitWidth: _bt.implicitWidth + 8
+                                    implicitHeight: _bt.implicitHeight + 4
+
+                                    Row {
+                                        id: _bt
+                                        anchors.centerIn: parent
+                                        spacing: 3
+                                        StyledText {
+                                            text: parent.parent.lineName
+                                            color: "white"
+                                            font.pixelSize: Theme.fontSizeSmall - 1
+                                            font.weight: Font.Bold
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                        StyledText {
+                                            visible: parent.parent.dirLabel.length > 0
+                                            text: "→ " + parent.parent.dirLabel
+                                            color: Qt.rgba(1, 1, 1, 0.8)
+                                            font.pixelSize: Theme.fontSizeSmall - 2
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            id: _removeBtn
+                            anchors.right: parent.right
+                            anchors.rightMargin: Theme.spacingS
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 28; height: 28; radius: 14
+                            color: _rmMouse.containsMouse
+                                ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.12)
+                                : "transparent"
+                            DankIcon { name: "close"; size: 14; color: Theme.error; anchors.centerIn: parent }
+                            MouseArea {
+                                id: _rmMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: picker.removeStation(_trackedItem.station.name)
+                            }
+                        }
+                    }
+
+                    // Expanded editor: line toggles + direction picker per line
+                    Rectangle {
+                        visible: _trackedItem.expanded
+                        width: _trackedItem.width
+                        implicitHeight: _editCol.implicitHeight + Theme.spacingM * 2
+                        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.06)
+                        radius: Theme.cornerRadius
+
+                        Column {
+                            id: _editCol
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: Theme.spacingM
+                            spacing: Theme.spacingS
+
+                            // Line toggles
+                            Flow {
+                                width: parent.width
+                                spacing: 6
+
+                                Repeater {
+                                    model: picker.allLinesFor(_trackedItem.station.name)
+                                    delegate: Rectangle {
+                                        required property string modelData
+                                        readonly property string lineName: modelData
+                                        readonly property bool tracked:
+                                            picker.isLineTracked(_trackedItem.station.name, lineName)
+
+                                        color: tracked ? root.lineColor(lineName)
+                                                       : Qt.rgba(0.5, 0.5, 0.5, 0.15)
+                                        radius: 4
+                                        implicitWidth: _et.implicitWidth + 12
+                                        implicitHeight: _et.implicitHeight + 8
+                                        border.color: tracked ? "transparent"
+                                                              : Qt.rgba(0.5, 0.5, 0.5, 0.3)
+                                        border.width: 1
+
+                                        StyledText {
+                                            id: _et
+                                            anchors.centerIn: parent
+                                            text: parent.lineName
+                                            color: parent.tracked ? "white" : Theme.surfaceVariantText
+                                            font.pixelSize: Theme.fontSizeSmall
+                                            font.weight: Font.Bold
+                                        }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                const stObj = { name: _trackedItem.station.name,
+                                                                stopIds: _trackedItem.station.stopIds }
+                                                picker.toggleLine(stObj, parent.lineName)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Direction picker for each tracked line
+                            Repeater {
+                                model: _trackedItem.station.lines
+                                delegate: Column {
+                                    id: _dirSection
+                                    required property string modelData
+                                    readonly property string lineName: modelData
+                                    readonly property var availDirs:
+                                        picker.availableDirections(_trackedItem.station.name, lineName)
+                                    readonly property string currentDir:
+                                        (_trackedItem.station.directions || {})[lineName] || ""
+
+                                    width: _editCol.width
+                                    spacing: 4
+                                    visible: availDirs.length > 0
+
+                                    Row {
+                                        spacing: 6
+
+                                        Rectangle {
+                                            color: root.lineColor(_dirSection.lineName)
+                                            radius: 3
+                                            implicitWidth: _dl.implicitWidth + 8
+                                            implicitHeight: _dl.implicitHeight + 4
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            StyledText {
+                                                id: _dl
+                                                anchors.centerIn: parent
+                                                text: _dirSection.lineName
+                                                color: "white"
+                                                font.pixelSize: Theme.fontSizeSmall - 1
+                                                font.weight: Font.Bold
+                                            }
+                                        }
+
+                                        StyledText {
+                                            text: "direction:"
+                                            color: Theme.surfaceVariantText
+                                            font.pixelSize: Theme.fontSizeSmall - 1
+                                            anchors.verticalCenter: parent.verticalCenter
+                                        }
+                                    }
+
+                                    Flow {
+                                        width: _dirSection.width
+                                        spacing: 6
+
+                                        // "All" chip
+                                        Rectangle {
+                                            readonly property bool active: _dirSection.currentDir === ""
+                                            color: active
+                                                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.9)
+                                                : Qt.rgba(0.5, 0.5, 0.5, 0.12)
+                                            radius: 4
+                                            implicitWidth: _alt.implicitWidth + 12
+                                            implicitHeight: _alt.implicitHeight + 8
+                                            border.color: active ? "transparent"
+                                                                 : Qt.rgba(0.5, 0.5, 0.5, 0.3)
+                                            border.width: 1
+                                            StyledText {
+                                                id: _alt
+                                                anchors.centerIn: parent
+                                                text: "All directions"
+                                                color: parent.active ? "white" : Theme.surfaceVariantText
+                                                font.pixelSize: Theme.fontSizeSmall - 1
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: picker.setDirection(
+                                                    _trackedItem.station.name, _dirSection.lineName, null)
+                                            }
+                                        }
+
+                                        // One chip per available direction
+                                        Repeater {
+                                            model: _dirSection.availDirs
+                                            delegate: Rectangle {
+                                                required property string modelData
+                                                readonly property string towards: modelData
+                                                readonly property bool active:
+                                                    _dirSection.currentDir === towards
+
+                                                color: active
+                                                    ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.9)
+                                                    : Qt.rgba(0.5, 0.5, 0.5, 0.12)
+                                                radius: 4
+                                                implicitWidth: _dct.implicitWidth + 12
+                                                implicitHeight: _dct.implicitHeight + 8
+                                                border.color: active ? "transparent"
+                                                                     : Qt.rgba(0.5, 0.5, 0.5, 0.3)
+                                                border.width: 1
+                                                StyledText {
+                                                    id: _dct
+                                                    anchors.centerIn: parent
+                                                    text: parent.towards
+                                                    color: parent.active ? "white" : Theme.surfaceVariantText
+                                                    font.pixelSize: Theme.fontSizeSmall - 1
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    onClicked: picker.setDirection(
+                                                        _trackedItem.station.name,
+                                                        _dirSection.lineName,
+                                                        parent.towards)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -184,7 +486,10 @@ PluginSettings {
                         placeholderTextColor: Theme.surfaceVariantText
                         font.pixelSize: Theme.fontSizeSmall
                         background: null
-                        onTextChanged: picker.searchText = text
+                        onTextChanged: {
+                            picker.searchText = text
+                            picker.expandedStation = ""
+                        }
                     }
                 }
             }
@@ -192,58 +497,115 @@ PluginSettings {
             // ---- Search results ----
             Repeater {
                 model: picker.filteredStations
-                delegate: Rectangle {
-                    id: _result
+                delegate: Column {
+                    id: _searchResult
                     required property var modelData
-                    readonly property bool selected: picker.isSelected(modelData.name)
+                    readonly property var stationData: modelData
+                    readonly property bool hasTracked: picker.trackedEntry(stationData.name) !== null
+                    readonly property bool expanded: picker.expandedStation === stationData.name
 
                     width: pickerCol.width
-                    height: _resContent.implicitHeight + Theme.spacingXS * 2
-                    radius: Theme.cornerRadius
-                    color: _result.selected
-                        ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
-                        : (_resMouse.containsMouse ? Qt.rgba(0, 0, 0, 0.04) : "transparent")
+                    spacing: 2
 
-                    Row {
-                        id: _resContent
-                        anchors.left: parent.left
-                        anchors.right: parent.right
-                        anchors.verticalCenter: parent.verticalCenter
-                        anchors.leftMargin: Theme.spacingS
-                        anchors.rightMargin: Theme.spacingS
-                        spacing: Theme.spacingS
+                    Rectangle {
+                        width: _searchResult.width
+                        height: _resRow.implicitHeight + Theme.spacingXS * 2
+                        radius: Theme.cornerRadius
+                        color: _searchResult.hasTracked
+                            ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
+                            : (_resMouse.containsMouse ? Qt.rgba(0, 0, 0, 0.04) : "transparent")
 
-                        DankIcon {
-                            visible: _result.selected
-                            name: "check_circle"
-                            size: 14
-                            color: Theme.primary
+                        Row {
+                            id: _resRow
+                            anchors.left: parent.left
+                            anchors.right: parent.right
                             anchors.verticalCenter: parent.verticalCenter
+                            anchors.leftMargin: Theme.spacingS
+                            anchors.rightMargin: Theme.spacingS
+                            spacing: Theme.spacingS
+
+                            DankIcon {
+                                visible: _searchResult.hasTracked
+                                name: "check_circle"
+                                size: 14
+                                color: Theme.primary
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            StyledText {
+                                text: _searchResult.stationData.name
+                                color: _searchResult.hasTracked ? Theme.primary : Theme.surfaceText
+                                font.pixelSize: Theme.fontSizeSmall
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+
+                            StyledText {
+                                text: (_searchResult.stationData.lines || []).slice(0, 6).join(", ")
+                                color: Theme.surfaceVariantText
+                                font.pixelSize: Theme.fontSizeSmall - 1
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
                         }
 
-                        StyledText {
-                            text: modelData.name
-                            color: _result.selected ? Theme.primary : Theme.surfaceText
-                            font.pixelSize: Theme.fontSizeSmall
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-
-                        StyledText {
-                            text: (modelData.lines || []).slice(0, 6).join(", ")
-                            color: Theme.surfaceVariantText
-                            font.pixelSize: Theme.fontSizeSmall - 1
-                            anchors.verticalCenter: parent.verticalCenter
+                        MouseArea {
+                            id: _resMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: picker.expandedStation =
+                                _searchResult.expanded ? "" : _searchResult.stationData.name
                         }
                     }
 
-                    MouseArea {
-                        id: _resMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: _result.selected ? Qt.ArrowCursor : Qt.PointingHandCursor
-                        onClicked: {
-                            if (!_result.selected)
-                                picker.addStation(modelData)
+                    // Line selection panel
+                    Rectangle {
+                        visible: _searchResult.expanded
+                        width: _searchResult.width
+                        implicitHeight: _lineFlow.implicitHeight + Theme.spacingS * 2
+                        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.06)
+                        radius: Theme.cornerRadius
+
+                        Flow {
+                            id: _lineFlow
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: Theme.spacingS
+                            spacing: 6
+
+                            Repeater {
+                                model: _searchResult.stationData.lines || []
+                                delegate: Rectangle {
+                                    required property string modelData
+                                    readonly property string lineName: modelData
+                                    readonly property bool tracked:
+                                        picker.isLineTracked(_searchResult.stationData.name, lineName)
+
+                                    color: tracked ? root.lineColor(lineName)
+                                                   : Qt.rgba(0.5, 0.5, 0.5, 0.15)
+                                    radius: 4
+                                    implicitWidth: _lt.implicitWidth + 12
+                                    implicitHeight: _lt.implicitHeight + 8
+                                    border.color: tracked ? "transparent"
+                                                          : Qt.rgba(0.5, 0.5, 0.5, 0.3)
+                                    border.width: 1
+
+                                    StyledText {
+                                        id: _lt
+                                        anchors.centerIn: parent
+                                        text: parent.lineName
+                                        color: parent.tracked ? "white" : Theme.surfaceVariantText
+                                        font.pixelSize: Theme.fontSizeSmall
+                                        font.weight: Font.Bold
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: picker.toggleLine(
+                                            _searchResult.stationData, parent.lineName)
+                                    }
+                                }
+                            }
                         }
                     }
                 }

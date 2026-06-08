@@ -68,6 +68,12 @@ Item {
                 const cd0 = deps[0].departureTime && deps[0].departureTime.countdown
                 if (cd0 === undefined || cd0 === null) continue
 
+                const lineFilter = root.trackedStops[idx].lines || []
+                if (lineFilter.length > 0 && lineFilter.indexOf(line.name) === -1) continue
+
+                const directions = root.trackedStops[idx].directions || {}
+                if (directions[line.name] !== undefined && directions[line.name] !== line.towards) continue
+
                 let dup = null
                 for (let k = 0; k < result[idx].lines.length; k++) {
                     if (result[idx].lines[k].name === line.name
@@ -76,6 +82,7 @@ Item {
                         break
                     }
                 }
+
                 if (dup) {
                     if (cd0 < dup.departures[0].countdown)
                         dup.departures[0].countdown = cd0
