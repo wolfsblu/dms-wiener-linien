@@ -95,14 +95,6 @@ PluginComponent {
                     spacing: 4
                     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
-                    StyledText {
-                        visible: stationChips.index > 0
-                        text: "·"
-                        color: Theme.surfaceVariantText
-                        font.pixelSize: Theme.fontSizeMedium
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
                     // Top 2 lines for this station
                     Repeater {
                         model: modelData.lines ? modelData.lines.slice(0, 2) : []
@@ -174,12 +166,8 @@ PluginComponent {
                 id: mainContent
                 width: parent.width
                 closePopout: contentFocusScope.closePopout
-                headerText: "Public Transit"
-                detailsText: {
-                    if (root.trackedStops.length === 0) return "No stops configured"
-                    const n = root.trackedStops.length
-                    return n + " stop" + (n === 1 ? "" : "s") + " tracked"
-                }
+                headerText: "Wiener Linien"
+                detailsText: ""
                 showCloseButton: true
 
                 Flickable {
@@ -297,7 +285,7 @@ PluginComponent {
 
                                         StyledText {
                                             id: _towards
-                                            text: "→ " + modelData.towards
+                                            text: modelData.towards
                                             color: Theme.surfaceText
                                             font.pixelSize: Theme.fontSizeSmall
                                             elide: Text.ElideRight
