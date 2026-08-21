@@ -67,20 +67,26 @@ Settings → Plugins → Wiener Linien:
 
 The station search is powered by a bundled static file (`data/stations.js`)
 generated from the [Wiener Linien OGD open data](https://www.wienerlinien.at/ogd_realtime/doku/).
-To refresh it, download the three CSVs and run the script:
+To refresh it, download the four CSVs and run the script:
 
 ```sh
 # Download
-curl -O https://data.wien.gv.at/csv/wienerlinien-ogd-haltestellen.csv
-curl -O https://data.wien.gv.at/csv/wienerlinien-ogd-steige.csv
-curl -O https://data.wien.gv.at/csv/wienerlinien-ogd-linien.csv
+curl -O https://www.wienerlinien.at/ogd_realtime/doku/ogd/wienerlinien-ogd-haltestellen.csv
+curl -O https://www.wienerlinien.at/ogd_realtime/doku/ogd/wienerlinien-ogd-haltepunkte.csv
+curl -O https://www.wienerlinien.at/ogd_realtime/doku/ogd/wienerlinien-ogd-linien.csv
+curl -O https://www.wienerlinien.at/ogd_realtime/doku/ogd/wienerlinien-ogd-fahrwegverlaeufe.csv
 
 # Regenerate
 python3 scripts/generate_stations.py \
     wienerlinien-ogd-haltestellen.csv \
-    wienerlinien-ogd-steige.csv \
-    wienerlinien-ogd-linien.csv
+    wienerlinien-ogd-haltepunkte.csv \
+    wienerlinien-ogd-linien.csv \
+    wienerlinien-ogd-fahrwegverlaeufe.csv
 ```
+
+> **Note:** Quickshell caches compiled JS bytecode.
+> After replacing `stations.js`, reloading the plugin in DMS alone may keep serving the old data.
+> Restart DMS (or delete that cache directory) to pick up the changes.
 
 ## API
 
