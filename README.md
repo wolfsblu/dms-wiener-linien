@@ -62,6 +62,9 @@ Settings → Plugins → Wiener Linien:
 - **Poll interval**: 30 s / 1 min / 2 min / 5 min (default 1 min). The Wiener
   Linien API asks that clients do not poll more than once every 15 seconds; the
   plugin enforces this as a hard floor regardless of the chosen interval.
+- **Raw request logging**: set `WIENER_LINIEN_DEBUG=1` in the shell environment
+  to log each API request URL and the full response at info level. Off by
+  default so the shell log isn't flooded on every poll.
 
 ## Updating station data
 

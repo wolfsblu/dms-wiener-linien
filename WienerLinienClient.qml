@@ -1,4 +1,5 @@
 import QtQuick
+import Quickshell
 
 // HTTP wrapper for the Wiener Linien Realtime API (v1.5).
 // All requests are unauthenticated GET calls to /ogd_realtime/monitor.
@@ -7,6 +8,10 @@ QtObject {
     id: root
 
     readonly property string _base: "https://www.wienerlinien.at/ogd_realtime"
+
+    // Verbose request/response logging is opt-in: set WIENER_LINIEN_DEBUG=1
+    // in the shell environment to avoid flooding the log on every poll.
+    readonly property bool _debug: Quickshell.env("WIENER_LINIEN_DEBUG") === "1"
 
     // Fetch departure monitor for one or more RBL stop IDs.
     // cb(null, monitors[]) on success, cb(Error) on failure.
@@ -22,8 +27,10 @@ QtObject {
         }
         const requestHeaders = { "Accept": "application/json" }
 
-        console.info("[transit] --> GET", url)
-        console.info("[transit] --> Headers:", JSON.stringify(requestHeaders))
+        if (root._debug) {
+            console.info("[transit] --> GET", url)
+            console.info("[transit] --> Headers:", JSON.stringify(requestHeaders))
+        }
 
         const xhr = new XMLHttpRequest()
         xhr.open("GET", url)
@@ -31,9 +38,11 @@ QtObject {
         xhr.onreadystatechange = function () {
             if (xhr.readyState !== XMLHttpRequest.DONE) return
 
-            console.info("[transit] <-- Status:", xhr.status, xhr.statusText)
-            console.info("[transit] <-- Headers:", xhr.getAllResponseHeaders())
-            console.info("[transit] <-- Body:", xhr.responseText)
+            if (root._debug) {
+                console.info("[transit] <-- Status:", xhr.status, xhr.statusText)
+                console.info("[transit] <-- Headers:", xhr.getAllResponseHeaders())
+                console.info("[transit] <-- Body:", xhr.responseText)
+            }
 
             if (xhr.status >= 200 && xhr.status < 300) {
                 try {

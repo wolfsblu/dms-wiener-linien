@@ -21,12 +21,26 @@ PluginComponent {
     onTrackedStopsChanged: WienerLinienService.configure(trackedStops, pollMs)
     onPollMsChanged: WienerLinienService.configure(trackedStops, pollMs)
 
-    // ---- Blink state for at-stop indicator ----
+    // ---- Blink state for the "now" indicator ----
+    // True while any displayed departure has countdown 0. The 500 ms timer only
+    // runs then, so countdown labels don't re-evaluate twice per second otherwise.
+    readonly property bool _hasZeroCountdown: {
+        const stations = WienerLinienService.departuresByStation
+        for (let i = 0; i < stations.length; i++) {
+            const lines = stations[i].lines || []
+            for (let j = 0; j < lines.length; j++) {
+                const deps = lines[j].departures || []
+                for (let k = 0; k < deps.length; k++)
+                    if (deps[k].countdown === 0) return true
+            }
+        }
+        return false
+    }
     property bool _blinkState: false
     Timer {
         interval: 500
         repeat: true
-        running: true
+        running: root._hasZeroCountdown
         onTriggered: root._blinkState = !root._blinkState
     }
     function countdownText(cd, suffix) {
@@ -61,9 +75,9 @@ PluginComponent {
 
         readonly property color _bg: root.lineColor(lineName, lineType)
         color: _bg
-        radius: 4
-        implicitWidth: _label.implicitWidth + 8
-        implicitHeight: _label.implicitHeight + 4
+        radius: height / 2
+        implicitWidth: _label.implicitWidth + Theme.spacingS
+        implicitHeight: _label.implicitHeight + Theme.spacingXS
 
         StyledText {
             id: _label
@@ -104,7 +118,7 @@ PluginComponent {
                     id: stationChips
                     required property var modelData
                     required property int index
-                    spacing: 4
+                    spacing: Theme.spacingXS
                     anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
                     // Top 2 lines for this station
@@ -112,7 +126,7 @@ PluginComponent {
                         model: modelData.lines ? modelData.lines.slice(0, 2) : []
                         delegate: Row {
                             required property var modelData
-                            spacing: 3
+                            spacing: Theme.spacingXXS
                             anchors.verticalCenter: parent ? parent.verticalCenter : undefined
 
                             LineBadge {
@@ -145,7 +159,7 @@ PluginComponent {
 
     verticalBarPill: Component {
         Column {
-            spacing: 2
+            spacing: Theme.spacingXXS
             DankIcon {
                 name: "directions_transit"
                 size: Theme.iconSizeSmall
@@ -288,10 +302,10 @@ PluginComponent {
                                         DankIcon {
                                             visible: modelData.barrierFree
                                             name: "accessible"
-                                            size: 14
+                                            size: Theme.iconSizeSmall
                                             color: Theme.surfaceVariantText
                                             anchors.left: _badge.right
-                                            anchors.leftMargin: 4
+                                            anchors.leftMargin: Theme.spacingXS
                                             anchors.verticalCenter: parent.verticalCenter
                                         }
 
@@ -302,7 +316,9 @@ PluginComponent {
                                             font.pixelSize: Theme.fontSizeSmall
                                             elide: Text.ElideRight
                                             anchors.left: _badge.right
-                                            anchors.leftMargin: modelData.barrierFree ? 22 : Theme.spacingS
+                                            anchors.leftMargin: modelData.barrierFree
+                                                ? Theme.iconSizeSmall + Theme.spacingXS + Theme.spacingXXS
+                                                : Theme.spacingS
                                             anchors.right: _countdowns.left
                                             anchors.rightMargin: Theme.spacingS
                                             anchors.verticalCenter: parent.verticalCenter

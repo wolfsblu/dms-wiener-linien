@@ -195,7 +195,7 @@ PluginSettings {
                     readonly property bool expanded: picker.expandedStation === station.name
 
                     width: pickerCol.width
-                    spacing: 2
+                    spacing: Theme.spacingXXS
 
                     Rectangle {
                         width: _trackedItem.width
@@ -218,7 +218,7 @@ PluginSettings {
                             anchors.leftMargin: Theme.spacingM
                             anchors.rightMargin: Theme.spacingS
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 5
+                            spacing: Theme.spacingXS
 
                             StyledText {
                                 text: _trackedItem.station.name
@@ -236,14 +236,14 @@ PluginSettings {
                                     readonly property string dirLabel: dirs[lineName] || ""
 
                                     color: root.lineColor(lineName)
-                                    radius: 4
-                                    implicitWidth: _bt.implicitWidth + 8
-                                    implicitHeight: _bt.implicitHeight + 4
+                                    radius: height / 2
+                                    implicitWidth: _bt.implicitWidth + Theme.spacingS
+                                    implicitHeight: _bt.implicitHeight + Theme.spacingXS
 
                                     Row {
                                         id: _bt
                                         anchors.centerIn: parent
-                                        spacing: 3
+                                        spacing: Theme.spacingXXS
                                         StyledText {
                                             text: parent.parent.lineName
                                             color: "white"
@@ -268,11 +268,9 @@ PluginSettings {
                             anchors.right: parent.right
                             anchors.rightMargin: Theme.spacingS
                             anchors.verticalCenter: parent.verticalCenter
-                            width: 28; height: 28; radius: 14
-                            color: _rmMouse.containsMouse
-                                ? Qt.rgba(Theme.error.r, Theme.error.g, Theme.error.b, 0.12)
-                                : "transparent"
-                            DankIcon { name: "close"; size: 14; color: Theme.error; anchors.centerIn: parent }
+                            width: 28; height: 28; radius: width / 2
+                            color: _rmMouse.containsMouse ? Theme.errorHover : "transparent"
+                            DankIcon { name: "close"; size: Theme.iconSizeSmall; color: Theme.error; anchors.centerIn: parent }
                             MouseArea {
                                 id: _rmMouse
                                 anchors.fill: parent
@@ -288,7 +286,7 @@ PluginSettings {
                         visible: _trackedItem.expanded
                         width: _trackedItem.width
                         implicitHeight: _editCol.implicitHeight + Theme.spacingM * 2
-                        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.06)
+                        color: Theme.primaryBackground
                         radius: Theme.cornerRadius
 
                         Column {
@@ -312,17 +310,17 @@ PluginSettings {
                                         picker.availableDirections(_trackedItem.station.name, lineName)
 
                                     width: _editCol.width
-                                    spacing: 6
+                                    spacing: Theme.spacingS
 
                                     // Line badge — acts as the toggle
                                     Rectangle {
                                         color: _lineRow.tracked ? root.lineColor(_lineRow.lineName)
-                                                                : Qt.rgba(0.5, 0.5, 0.5, 0.15)
-                                        radius: 4
-                                        implicitWidth: _lt.implicitWidth + 12
-                                        implicitHeight: _lt.implicitHeight + 8
+                                                                : Theme.surfaceContainerHighest
+                                        radius: height / 2
+                                        implicitWidth: _lt.implicitWidth + Theme.spacingM
+                                        implicitHeight: _lt.implicitHeight + Theme.spacingS
                                         border.color: _lineRow.tracked ? "transparent"
-                                                                       : Qt.rgba(0.5, 0.5, 0.5, 0.3)
+                                                                       : Theme.outline
                                         border.width: 1
                                         StyledText {
                                             id: _lt
@@ -352,20 +350,17 @@ PluginSettings {
                                                 picker.isDirActive(_trackedItem.station.name,
                                                                    _lineRow.lineName, towards)
 
-                                            color: active
-                                                ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.9)
-                                                : Qt.rgba(0.5, 0.5, 0.5, 0.12)
-                                            radius: 4
-                                            implicitWidth: _dct.implicitWidth + 12
-                                            implicitHeight: _dct.implicitHeight + 8
-                                            border.color: active ? "transparent"
-                                                                 : Qt.rgba(0.5, 0.5, 0.5, 0.3)
+                                            color: active ? Theme.primary : Theme.surfaceContainerHighest
+                                            radius: height / 2
+                                            implicitWidth: _dct.implicitWidth + Theme.spacingM
+                                            implicitHeight: _dct.implicitHeight + Theme.spacingS
+                                            border.color: active ? "transparent" : Theme.outline
                                             border.width: 1
                                             StyledText {
                                                 id: _dct
                                                 anchors.centerIn: parent
                                                 text: parent.towards
-                                                color: parent.active ? "white" : Theme.surfaceVariantText
+                                                color: parent.active ? Theme.primaryText : Theme.surfaceVariantText
                                                 font.pixelSize: Theme.fontSizeSmall - 1
                                             }
                                             MouseArea {
@@ -387,40 +382,15 @@ PluginSettings {
             }
 
             // ---- Search field ----
-            Rectangle {
+            DankTextField {
+                id: _searchField
                 width: pickerCol.width
-                height: _searchRow.implicitHeight + Theme.spacingS * 2
-                radius: Theme.cornerRadius
-                color: Theme.surface
-                border.color: _searchField.activeFocus ? Theme.primary : Qt.rgba(0, 0, 0, 0.12)
-                border.width: 1
-
-                Row {
-                    id: _searchRow
-                    anchors.fill: parent
-                    anchors.margins: Theme.spacingS
-                    spacing: Theme.spacingXS
-
-                    DankIcon {
-                        name: "search"
-                        size: Theme.iconSizeSmall
-                        color: Theme.surfaceVariantText
-                        anchors.verticalCenter: parent.verticalCenter
-                    }
-
-                    TextField {
-                        id: _searchField
-                        width: parent.width - Theme.iconSizeSmall - Theme.spacingXS
-                        placeholderText: "Search station..."
-                        color: Theme.surfaceText
-                        placeholderTextColor: Theme.surfaceVariantText
-                        font.pixelSize: Theme.fontSizeSmall
-                        background: null
-                        onTextChanged: {
-                            picker.searchText = text
-                            picker.expandedStation = ""
-                        }
-                    }
+                placeholderText: "Search station..."
+                leftIconName: "search"
+                showClearButton: true
+                onTextEdited: {
+                    picker.searchText = text
+                    picker.expandedStation = ""
                 }
             }
 
@@ -435,15 +405,15 @@ PluginSettings {
                     readonly property bool expanded: picker.expandedStation === stationData.name
 
                     width: pickerCol.width
-                    spacing: 2
+                    spacing: Theme.spacingXXS
 
                     Rectangle {
                         width: _searchResult.width
                         height: _resRow.implicitHeight + Theme.spacingXS * 2
                         radius: Theme.cornerRadius
                         color: _searchResult.hasTracked
-                            ? Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.1)
-                            : (_resMouse.containsMouse ? Qt.rgba(0, 0, 0, 0.04) : "transparent")
+                            ? Theme.primaryHover
+                            : (_resMouse.containsMouse ? Theme.surfaceHover : "transparent")
 
                         Row {
                             id: _resRow
@@ -457,7 +427,7 @@ PluginSettings {
                             DankIcon {
                                 visible: _searchResult.hasTracked
                                 name: "check_circle"
-                                size: 14
+                                size: Theme.iconSizeSmall
                                 color: Theme.primary
                                 anchors.verticalCenter: parent.verticalCenter
                             }
@@ -492,7 +462,7 @@ PluginSettings {
                         visible: _searchResult.expanded
                         width: _searchResult.width
                         implicitHeight: _lineFlow.implicitHeight + Theme.spacingS * 2
-                        color: Qt.rgba(Theme.primary.r, Theme.primary.g, Theme.primary.b, 0.06)
+                        color: Theme.primaryBackground
                         radius: Theme.cornerRadius
 
                         Flow {
@@ -501,7 +471,7 @@ PluginSettings {
                             anchors.right: parent.right
                             anchors.top: parent.top
                             anchors.margins: Theme.spacingS
-                            spacing: 6
+                            spacing: Theme.spacingS
 
                             Repeater {
                                 model: _searchResult.stationData.lines || []
@@ -512,12 +482,12 @@ PluginSettings {
                                         picker.isLineTracked(_searchResult.stationData.name, lineName)
 
                                     color: tracked ? root.lineColor(lineName)
-                                                   : Qt.rgba(0.5, 0.5, 0.5, 0.15)
-                                    radius: 4
-                                    implicitWidth: _lt.implicitWidth + 12
-                                    implicitHeight: _lt.implicitHeight + 8
+                                                   : Theme.surfaceContainerHighest
+                                    radius: height / 2
+                                    implicitWidth: _lt.implicitWidth + Theme.spacingM
+                                    implicitHeight: _lt.implicitHeight + Theme.spacingS
                                     border.color: tracked ? "transparent"
-                                                          : Qt.rgba(0.5, 0.5, 0.5, 0.3)
+                                                          : Theme.outline
                                     border.width: 1
 
                                     StyledText {
